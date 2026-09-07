@@ -1,6 +1,6 @@
 {
-  "name": "Akwarts",
-  "short_name": "Akwarts",
+  "name": "aKwarts",
+  "short_name": "aKwarts",
   "description": "Personal Expense & Income Tracker",
   "start_url": "/",
   "display": "standalone",
@@ -8,12 +8,12 @@
   "theme_color": "#4e1a3d",
   "icons": [
     {
-      "src": "/wordLogo.png",
+      "src": "/letterLogo.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "/wordLogo.png",
+      "src": "/letterLogo.png",
       "sizes": "512x512",
       "type": "image/png"
     }
