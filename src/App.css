@@ -1,0 +1,330 @@
+/* --- BRAND COLORS --- */
+:root {
+  --vivid-cyan: #05e0e9;
+  --vivid-crimson: #ff2768;
+  --dark-magenta: #4e1a3d;
+  --light-crimson: #ffc4d4;
+  --white: #ffffff;
+  --bg-gray: #f2f2f7; /* Standard iOS background so your white cards pop */
+}
+
+/* Reset everything to look clean */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+body {
+  background-color: var(--bg-gray); 
+}
+
+/* App Container */
+.app-container {
+  max-width: 420px; 
+  margin: 0 auto; 
+  background-color: var(--bg-gray); 
+  min-height: 100vh; 
+  box-shadow: 0 0 15px rgba(0,0,0,0.1);
+  position: relative; 
+  padding-bottom: 70px; /* Room for the tab bar */
+}
+
+/* Header */
+.header {
+  background-color: transparent; 
+  padding: 20px 20px 10px 20px;
+  display: flex;
+  justify-content: flex-start; 
+  align-items: center;
+}
+
+.header-logo {
+  height: 40px; 
+  width: auto;
+  object-fit: contain;
+}
+
+.dashboard {
+  padding: 20px;
+}
+
+/* Cards */
+.summary-card {
+  background-color: var(--white);
+  border-radius: 15px;
+  padding: 20px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+  margin-bottom: 20px;
+}
+
+.balance {
+  text-align: center;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #eaeaea; 
+  margin-bottom: 20px;
+}
+
+/* Text colors using your Dark Magenta for a branded look */
+.summary-card h2, .summary-card h3 {
+  color: var(--dark-magenta);
+  font-weight: 600;
+}
+
+.balance h2 {
+  font-size: 1rem;
+  opacity: 0.8;
+}
+
+.amount-large {
+  font-size: 2.5rem;
+  font-weight: bold;
+  color: var(--dark-magenta);
+  margin-top: 5px;
+}
+
+.metrics {
+  display: flex;
+  justify-content: space-between;
+}
+
+.metric {
+  text-align: center;
+  flex: 1;
+}
+
+.metric h3 {
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+
+.metric .amount {
+  font-size: 1.2rem;
+  font-weight: bold;
+  margin-top: 5px;
+}
+
+/* Income uses Cyan, Expenses use Crimson */
+.positive { color: var(--vivid-cyan); } 
+.negative { color: var(--vivid-crimson); } 
+
+/* --- FORM STYLES --- */
+.form-card {
+  background-color: var(--white);
+  border-radius: 15px;
+  padding: 20px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+}
+
+.form-card h2 {
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.input-field {
+  width: 100%;
+  padding: 14px 15px;
+  margin-bottom: 15px;
+  border: 1px solid #e5e5ea;
+  border-radius: 10px;
+  font-size: 1rem;
+  background-color: var(--bg-gray);
+  outline: none; 
+  transition: border-color 0.2s;
+  color: var(--dark-magenta);
+}
+
+.input-field:focus {
+  border-color: var(--dark-magenta); 
+}
+
+.submit-button {
+  width: 100%;
+  padding: 15px;
+  background-color: var(--vivid-crimson); /* Default is crimson for expenses */
+  color: var(--white);
+  border: none;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.submit-button:active {
+  opacity: 0.7; /* Makes the button look tapped */
+}
+
+/* --- TRANSACTION LIST STYLES --- */
+.transaction-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.transaction-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px;
+  background-color: var(--bg-gray);
+  border-radius: 10px;
+  border-left: 5px solid var(--dark-magenta); /* Default left border */
+}
+
+/* Make additions cyan and subtractions crimson on the border */
+.transaction-item.add {
+  border-left-color: var(--vivid-cyan);
+}
+
+.transaction-item.minus {
+  border-left-color: var(--vivid-crimson);
+}
+
+.transaction-info {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.transaction-name {
+  font-weight: 600;
+  color: var(--dark-magenta);
+  font-size: 1.05rem;
+}
+
+.transaction-amount {
+  font-size: 0.95rem;
+}
+
+.delete-button {
+  background: none;
+  border: none;
+  color: #ff3b30; /* iOS Red for danger/delete actions */
+  cursor: pointer;
+  padding: 8px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: transform 0.2s;
+  border-radius: 50%;
+}
+
+/* Subtle background pop when hovering/tapping the trash icon */
+.delete-button:active {
+  background-color: rgba(255, 59, 48, 0.1);
+  transform: scale(0.9);
+}
+
+/* --- SPREADSHEET TABLE STYLES --- */
+.budget-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.table-container {
+  background-color: var(--white);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+}
+
+.table-title {
+  text-align: center;
+  padding: 15px;
+  background-color: rgba(255, 196, 212, 0.3); /* Soft Light Crimson background */
+  color: var(--dark-magenta);
+  font-size: 1.1rem;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+
+.budget-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.budget-table th, .budget-table td {
+  padding: 12px 10px;
+  border-bottom: 1px solid #eaeaea;
+  border-right: 1px solid #eaeaea; /* Adds the vertical spreadsheet lines */
+  font-size: 0.9rem;
+  color: #333;
+}
+
+/* Remove the right border on the last column */
+.budget-table th:last-child, .budget-table td:last-child {
+  border-right: none;
+}
+
+.budget-table th {
+  background-color: #f8f8f8;
+  color: var(--dark-magenta);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.budget-table td {
+  background-color: var(--white);
+}
+
+/* Forces the Budget and Actual numbers to align to the right */
+.number-col {
+  text-align: right;
+  width: 35%;
+}
+
+/* The Total Row at the bottom of the tables */
+.total-row td {
+  font-weight: bold;
+  background-color: #f8f8f8;
+  color: var(--dark-magenta);
+}
+
+/* Thematic variations for different tables */
+.summary-table th {
+  background-color: var(--dark-magenta);
+  color: var(--white);
+}
+
+.highlight-theme th {
+  background-color: #e5e5ea;
+}
+
+/* --- CORRECTED TAB BAR STYLES --- */
+.tab-bar {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  display: flex;
+  height: 70px;
+}
+
+.tab-bar button {
+  flex: 1;
+  height: 100%; /* Forces the button to take up the entire height of the footer */
+  background-color: var(--light-crimson);
+  color: var(--dark-magenta);
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: all 0.2s ease-in-out;
+  
+  /* Full-height divider between icons */
+  border: none;
+  border-right: 1px solid rgba(255, 196, 212, 0.2); 
+}
+
+/* Removes the divider from the very last button so it doesn't touch the edge */
+.tab-bar button:last-child {
+  border-right: none;
+}
+
+/* --- THE SUNKEN ACTIVE STATE --- */
+.tab-bar button.active {
+  background-color: var(--bg-gray);
+  border-top: none;
+}
