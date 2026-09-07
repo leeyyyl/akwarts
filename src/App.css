@@ -33,10 +33,11 @@ body {
   max-width: 420px; 
   margin: 0 auto; 
   background-color: var(--bg-gray); 
-  height: 100%; /* Crucial: Use 100% instead of 100vh/100dvh */
+  height: 100%; 
   box-shadow: 0 0 15px rgba(0,0,0,0.1);
   display: flex;
   flex-direction: column;
+  padding-bottom: 0; /* Removes the old 70px gap */
 }
 
 /* Header */
@@ -58,8 +59,9 @@ body {
 
 .dashboard {
   padding: 20px;
-  flex-grow: 1; /* Expands to fill the space between header and tab bar */
-  overflow-y: auto; /* Enables scrolling for this section only */
+  flex: 1; /* Takes up the remaining middle space */
+  overflow-y: auto; /* Allows internal scrolling */
+  min-height: 0; /* CRITICAL: Allows flex items to shrink and scroll properly */
 }
 
 /* Cards */
@@ -307,11 +309,12 @@ body {
 
 /* --- CORRECTED TAB BAR STYLES --- */
 .tab-bar {
-  flex-shrink: 0; /* Locks the height */
+  flex-shrink: 0; /* Prevents the bar from squishing */
   width: 100%;
   display: flex;
   height: 70px;
   z-index: 10;
+  /* Make sure position: absolute and bottom: 0 are DELETED */
 }
 
 .tab-bar button {
