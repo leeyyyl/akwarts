@@ -25,19 +25,23 @@ body {
   max-width: 420px; 
   margin: 0 auto; 
   background-color: var(--bg-gray); 
-  min-height: 100vh; 
+  height: 100vh; /* Locks to screen height */
+  height: 100dvh; /* Better support for mobile browsers (safari/chrome) */
   box-shadow: 0 0 15px rgba(0,0,0,0.1);
-  position: relative; 
-  padding-bottom: 70px; /* Room for the tab bar */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* Prevents the entire page from scrolling */
 }
 
 /* Header */
 .header {
-  background-color: transparent; 
+  background-color: var(--bg-gray); 
   padding: 20px 20px 10px 20px;
   display: flex;
   justify-content: flex-start; 
   align-items: center;
+  flex-shrink: 0; /* Locks the height */
+  z-index: 10;
 }
 
 .header-logo {
@@ -48,6 +52,8 @@ body {
 
 .dashboard {
   padding: 20px;
+  flex-grow: 1; /* Expands to fill the space between header and tab bar */
+  overflow-y: auto; /* Enables scrolling for this section only */
 }
 
 /* Cards */
@@ -295,11 +301,11 @@ body {
 
 /* --- CORRECTED TAB BAR STYLES --- */
 .tab-bar {
-  position: absolute;
-  bottom: 0;
+  flex-shrink: 0; /* Locks the height */
   width: 100%;
   display: flex;
   height: 70px;
+  z-index: 10;
 }
 
 .tab-bar button {
