@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Home, PlusCircle, MinusCircle, FileEdit, Trash2, Edit2, Check, X, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import './App.css';
+import UpdatePrompt from './UpdatePrompt';
 
 function App() {
   // Date Navigation State
@@ -448,6 +449,8 @@ function App() {
           </span>
         </div>
       </header>
+
+      <UpdatePrompt />
 
       {/* Added touch events here for swiping */}
       <main 

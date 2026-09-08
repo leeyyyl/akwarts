@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate', // Automatically updates the app when you push to Vercel
+      registerType: 'prompt', // Automatically updates the app when you push to Vercel
       includeAssets: ['letterLogo.png', 'wordLogo.png'], // Caches your logos for offline use
       manifest: {
         name: 'aKwarts',
