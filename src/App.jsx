@@ -28,6 +28,16 @@ function App() {
     }
   };
 
+  const [deleteCatConfirm, setDeleteCatConfirm] = useState({ isOpen: false, catId: null, catName: '' });
+
+  const handleConfirmDeleteCategory = () => {
+    // Removes the category
+    setCategories(categories.filter(c => c.id !== deleteCatConfirm.catId));
+    // Removes all transactions tied to that category to prevent ghost data
+    setTransactions(transactions.filter(t => t.categoryId !== deleteCatConfirm.catId));
+    setDeleteCatConfirm({ isOpen: false, catId: null, catName: '' });
+  };
+
   // Swipe Gesture State
   const [touchStartX, setTouchStartX] = useState(null);
   const [touchEndX, setTouchEndX] = useState(null);
@@ -208,8 +218,18 @@ function App() {
 
       return (
         <div key={cat.id} className="table-container" style={{marginBottom: '20px'}}>
-          <div className="table-title" style={{ borderBottom: `2px solid ${themeColor}` }}>
-            {cat.name.toUpperCase()}
+          <div className="table-title" style={{ borderBottom: `2px solid ${themeColor}`, display: 'flex', alignItems: 'center', position: 'relative' }}>
+            <span style={{ width: '100%', textAlign: 'center' }}>{cat.name.toUpperCase()}</span>
+            
+            {isUpdateMode && (
+              <button 
+                onClick={() => setDeleteCatConfirm({ isOpen: true, catId: cat.id, catName: cat.name })}
+                className="delete-button" 
+                style={{ position: 'absolute', right: '10px', padding: '4px', color: 'var(--vivid-crimson)' }}
+              >
+                <Trash2 size={20} />
+              </button>
+            )}
           </div>
           <table className="budget-table">
             <thead>
@@ -413,6 +433,20 @@ function App() {
                 <div style={{display: 'flex', gap: '15px'}}>
                   <button onClick={handleConfirmSave} className="submit-button" style={{backgroundColor: 'var(--vivid-cyan)', flex: 1}}>Yes</button>
                   <button onClick={() => setConfirmDialog({ isOpen: false, catId: null, newBudget: '' })} className="submit-button" style={{backgroundColor: 'var(--vivid-crimson)', flex: 1}}>No</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Delete Category Confirmation Modal */}
+          {deleteCatConfirm.isOpen && (
+            <div style={{position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 100}}>
+              <div style={{backgroundColor: 'var(--white)', padding: '25px', borderRadius: '15px', width: '85%', maxWidth: '320px', textAlign: 'center', boxShadow: '0 10px 25px rgba(0,0,0,0.2)'}}>
+                <h3 style={{color: 'var(--vivid-crimson)', marginBottom: '10px'}}>Delete Category?</h3>
+                <p style={{marginBottom: '20px', color: '#555'}}>Are you sure you want to delete <strong>{deleteCatConfirm.catName}</strong>? This will also remove all its transactions for this month.</p>
+                <div style={{display: 'flex', gap: '15px'}}>
+                  <button onClick={handleConfirmDeleteCategory} className="submit-button" style={{backgroundColor: 'var(--vivid-crimson)', flex: 1}}>Yes</button>
+                  <button onClick={() => setDeleteCatConfirm({ isOpen: false, catId: null, catName: '' })} className="submit-button" style={{backgroundColor: '#e5e5ea', color: '#333', flex: 1}}>No</button>
                 </div>
               </div>
             </div>
