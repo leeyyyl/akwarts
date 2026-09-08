@@ -78,7 +78,7 @@ function App() {
   // Global Savings State
   const [savingsData, setSavingsData] = useState(() => {
     const saved = localStorage.getItem('akwartsSavings');
-    return saved ? JSON.parse(saved) : { current: 0, goal: 5000 };
+    return saved ? JSON.parse(saved) : { current: 0, goal: 0 };
   });
   const [savingsModal, setSavingsModal] = useState({ isOpen: false, mode: 'deposit' }); // 'deposit', 'withdraw', 'goal'
   const [savingsInput, setSavingsInput] = useState('');
@@ -182,10 +182,10 @@ function App() {
     
     if (savedCats) setCategories(JSON.parse(savedCats));
     else setCategories([
-      { id: 'c1', name: 'Weekly Income', type: 'add', expected: 5000 },
-      { id: 'c2', name: 'Bills', type: 'minus', expected: 1500 },
-      { id: 'c3', name: 'Other Expenses', type: 'minus', expected: 500 },
-      { id: 'c4', name: 'Debt', type: 'minus', expected: 300 }
+      { id: 'c1', name: 'Weekly Income', type: 'add', expected: 0 },
+      { id: 'c2', name: 'Bills', type: 'minus', expected: 0 },
+      { id: 'c3', name: 'Other Expenses', type: 'minus', expected: 0 },
+      { id: 'c4', name: 'Debt', type: 'minus', expected: 0 }
     ]);
 
     if (savedTxns) setTransactions(JSON.parse(savedTxns));
@@ -515,7 +515,7 @@ function App() {
               <select 
                 value={selectedCategory} 
                 onChange={(e) => { setSelectedCategory(e.target.value); setFormErrors({...formErrors, category: ''}); }} 
-                className="input-field"
+                className={`input-field ${formErrors.category ? 'shake-error' : ''}`}
                 style={formErrors.category ? { borderColor: 'var(--vivid-crimson)', color: 'var(--vivid-crimson)' } : {}}
               >
                 <option value="" disabled>{formErrors.category || "Select a Category..."}</option>
@@ -527,7 +527,7 @@ function App() {
                 placeholder={formErrors.name || (isAdd ? "E.g., Salary, Freelance" : "E.g., Groceries, Rent")} 
                 value={itemName}
                 onChange={(e) => { setItemName(e.target.value); setFormErrors({...formErrors, name: ''}); }}
-                className="input-field"
+                className={`input-field ${formErrors.name ? 'shake-error' : ''}`}
                 style={formErrors.name ? { borderColor: 'var(--vivid-crimson)' } : {}}
               />
 
@@ -536,7 +536,7 @@ function App() {
                 placeholder={formErrors.amount || "Amount (₱)"} 
                 value={itemAmount}
                 onChange={(e) => { setItemAmount(e.target.value); setFormErrors({...formErrors, amount: ''}); }}
-                className="input-field"
+                className={`input-field ${formErrors.amount ? 'shake-error' : ''}`}
                 style={formErrors.amount ? { borderColor: 'var(--vivid-crimson)' } : {}}
               />
               
@@ -549,17 +549,23 @@ function App() {
           <div className="summary-card">
             <h3>History Logs</h3>
             <div className="transaction-list" style={{marginTop: '15px'}}>
-              {historyLogs.map(t => (
-                <div key={t.id} className={`transaction-item ${t.type}`}>
-                  <div className="transaction-info">
-                    <span className="transaction-name">{t.name}</span>
-                    <span style={{ fontSize: '0.8rem', color: '#999' }}>
-                      {new Date(t.id).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                    <span className="transaction-amount">₱{t.amount.toFixed(2)}</span>
-                  </div>
+              {historyLogs.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '20px', color: '#aaa', fontStyle: 'italic' }}>
+                  No logs yet!
                 </div>
-              ))}
+              ) : (
+                historyLogs.map(t => (
+                  <div key={t.id} className={`transaction-item ${t.type}`}>
+                    <div className="transaction-info">
+                      <span className="transaction-name">{t.name}</span>
+                      <span style={{ fontSize: '0.8rem', color: '#999' }}>
+                        {new Date(t.id).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                      <span className="transaction-amount">₱{t.amount.toFixed(2)}</span>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -669,7 +675,7 @@ function App() {
           alt="Akwarts Logo" 
           className="header-logo" 
           onClick={() => setActiveTab('main')}
-          style={{ cursor: 'pointer' }}
+          style={{ cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}
         />
         
         <div className="month-pill">
