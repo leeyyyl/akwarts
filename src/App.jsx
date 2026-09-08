@@ -134,8 +134,6 @@ function App() {
       
       setTransactions(updatedTransactions);
     }
-
-    if (navigator.vibrate) navigator.vibrate(50);
     
     setSavingsError('');
     setSavingsModal({ isOpen: false, mode: '' });
@@ -162,12 +160,10 @@ function App() {
     const isRightSwipe = distance < -minSwipeDistance;
 
     if (isLeftSwipe && canGoNext) {
-      handleNextMonth(); 
-      if (navigator.vibrate) navigator.vibrate([30, 50, 30]); // <-- ADD THIS
+      handleNextMonth();
     }
     if (isRightSwipe && canGoPrev) {
-      handlePrevMonth(); 
-      if (navigator.vibrate) navigator.vibrate([30, 50, 30]); // <-- ADD THIS
+      handlePrevMonth();
     }
   };
 
@@ -221,7 +217,6 @@ function App() {
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
-    if (navigator.vibrate) navigator.vibrate(50);
     setItemName('');
     setItemAmount('');
     setSelectedCategory('');
@@ -266,7 +261,6 @@ function App() {
     };
     
     setTransactions([...transactions, newTransaction]);
-    if (navigator.vibrate) navigator.vibrate(50);
     setItemName('');
     setItemAmount('');
     setSelectedCategory('');
@@ -293,7 +287,6 @@ function App() {
   const handleConfirmSave = () => {
     updateCategoryBudget(confirmDialog.catId, confirmDialog.newBudget);
     handleCancelEdit(confirmDialog.catId);
-    if (navigator.vibrate) navigator.vibrate(50);
     setConfirmDialog({ isOpen: false, catId: null, newBudget: '' });
   };
 
@@ -602,7 +595,6 @@ function App() {
                   <button onClick={() => {
                     handleAddCategory(document.getElementById('newCatName').value, document.getElementById('newCatType').value);
                     document.getElementById('newCatName').value = '';
-                    if (navigator.vibrate) navigator.vibrate(50);
                     setShowAddCategory(false);
                   }} className="submit-button" style={{width: 'auto'}}>Add</button>
                 </div>
