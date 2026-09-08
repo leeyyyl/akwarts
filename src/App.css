@@ -8,6 +8,20 @@
   --bg-gray: #f2f2f7;
 }
 
+/* 1. Forcefully kill the blue tap highlight EVERYWHERE in the app */
+* {
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+/* 2. Ensure tab buttons have absolutely no background when scaling */
+.tab-bar button {
+  background: transparent !important;
+  background-color: transparent !important;
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
 html, body, #root {
   height: 100%;
   width: 100%;
@@ -334,7 +348,8 @@ body {
 .tab-bar button {
   flex: 1;
   height: 100%; 
-  background-color: var(--light-crimson) !important; /* Forces the pink background */
+  background-color: transparent !important;
+  -webkit-tap-highlight-color: transparent; /* Forces the pink background */
   color: var(--dark-magenta) !important; /* Forces the icons to be dark magenta */
   cursor: pointer;
   display: flex;

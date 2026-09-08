@@ -134,6 +134,8 @@ function App() {
       
       setTransactions(updatedTransactions);
     }
+
+    if (navigator.vibrate) navigator.vibrate(50);
     
     setSavingsError('');
     setSavingsModal({ isOpen: false, mode: '' });
@@ -291,6 +293,7 @@ function App() {
   const handleConfirmSave = () => {
     updateCategoryBudget(confirmDialog.catId, confirmDialog.newBudget);
     handleCancelEdit(confirmDialog.catId);
+    if (navigator.vibrate) navigator.vibrate(50);
     setConfirmDialog({ isOpen: false, catId: null, newBudget: '' });
   };
 
@@ -599,6 +602,7 @@ function App() {
                   <button onClick={() => {
                     handleAddCategory(document.getElementById('newCatName').value, document.getElementById('newCatType').value);
                     document.getElementById('newCatName').value = '';
+                    if (navigator.vibrate) navigator.vibrate(50);
                     setShowAddCategory(false);
                   }} className="submit-button" style={{width: 'auto'}}>Add</button>
                 </div>
@@ -674,7 +678,13 @@ function App() {
           src="/wordLogo.png" 
           alt="Akwarts Logo" 
           className="header-logo" 
-          onClick={() => setActiveTab('main')}
+          onClick={() => { 
+            setActiveTab('main');
+            // Scroll both the window and the dashboard container just to be safe
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            const dashboard = document.querySelector('.dashboard');
+            if (dashboard) dashboard.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
           style={{ cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}
         />
         
