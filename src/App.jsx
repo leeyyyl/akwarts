@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Home, PlusCircle, MinusCircle, FileEdit, Trash2, Edit2, Check, X, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import './App.css';
 import UpdatePrompt from './UpdatePrompt';
@@ -28,6 +28,43 @@ function App() {
     }
   };
 
+  // Factory Reset State
+  const [resetClicks, setResetClicks] = useState(0);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const resetButtonRef = useRef(null); // Used to identify the reset button
+
+  // Listen for clicks anywhere on the screen
+  useEffect(() => {
+    const handleGlobalClick = (e) => {
+      // If the tap was NOT on the reset button, restart the count
+      if (resetButtonRef.current && !resetButtonRef.current.contains(e.target)) {
+        setResetClicks(0);
+      }
+    };
+    
+    document.addEventListener('click', handleGlobalClick);
+    document.addEventListener('touchstart', handleGlobalClick); // For mobile swipes/taps
+    
+    return () => {
+      document.removeEventListener('click', handleGlobalClick);
+      document.removeEventListener('touchstart', handleGlobalClick);
+    };
+  }, []);
+
+  const handleResetClick = () => {
+    if (resetClicks + 1 >= 5) {
+      setShowResetConfirm(true);
+      setResetClicks(0); 
+    } else {
+      setResetClicks(prev => prev + 1);
+    }
+  };
+
+  const executeFactoryReset = () => {
+    localStorage.clear(); 
+    window.location.reload(); 
+  };
+
   const [deleteCatConfirm, setDeleteCatConfirm] = useState({ isOpen: false, catId: null, catName: '' });
 
   const handleConfirmDeleteCategory = () => {
@@ -36,6 +73,72 @@ function App() {
     // Removes all transactions tied to that category to prevent ghost data
     setTransactions(transactions.filter(t => t.categoryId !== deleteCatConfirm.catId));
     setDeleteCatConfirm({ isOpen: false, catId: null, catName: '' });
+  };
+
+  // Global Savings State
+  const [savingsData, setSavingsData] = useState(() => {
+    const saved = localStorage.getItem('akwartsSavings');
+    return saved ? JSON.parse(saved) : { current: 0, goal: 5000 };
+  });
+  const [savingsModal, setSavingsModal] = useState({ isOpen: false, mode: 'deposit' }); // 'deposit', 'withdraw', 'goal'
+  const [savingsInput, setSavingsInput] = useState('');
+  const [savingsError, setSavingsError] = useState('');
+  const [selectedIncomeId, setSelectedIncomeId] = useState('');
+
+  // Save global savings to local storage
+  useEffect(() => {
+    localStorage.setItem('akwartsSavings', JSON.stringify(savingsData));
+  }, [savingsData]);
+
+  // Process Savings Deposits, Withdrawals, and Goals
+  const handleSavingsSubmit = () => {
+    const amount = parseFloat(savingsInput);
+    if (isNaN(amount) || amount <= 0) {
+      setSavingsError('Enter a valid amount!');
+      setSavingsInput('');
+      return;
+    }
+
+    if (savingsModal.mode === 'goal') {
+      setSavingsData({ ...savingsData, goal: amount });
+    } else {
+      if (!selectedIncomeId) {
+        setSavingsError('Select an income source!');
+        return;
+      }
+
+      const targetTxnIndex = transactions.findIndex(t => t.id.toString() === selectedIncomeId);
+      if (targetTxnIndex === -1) return;
+      
+      const targetTxn = transactions[targetTxnIndex];
+      const updatedTransactions = [...transactions];
+
+      if (savingsModal.mode === 'withdraw') {
+        if (amount > savingsData.current) {
+          setSavingsError('Exceeds current savings!');
+          setSavingsInput('');
+          return;
+        }
+        setSavingsData({ ...savingsData, current: savingsData.current - amount });
+        updatedTransactions[targetTxnIndex] = { ...targetTxn, amount: targetTxn.amount + amount };
+        
+      } else if (savingsModal.mode === 'deposit') {
+        if (amount > targetTxn.amount) {
+          setSavingsError('Exceeds item balance!');
+          setSavingsInput('');
+          return;
+        }
+        setSavingsData({ ...savingsData, current: savingsData.current + amount });
+        updatedTransactions[targetTxnIndex] = { ...targetTxn, amount: targetTxn.amount - amount };
+      }
+      
+      setTransactions(updatedTransactions);
+    }
+    
+    setSavingsError('');
+    setSavingsModal({ isOpen: false, mode: '' });
+    setSavingsInput('');
+    setSelectedIncomeId('');
   };
 
   // Swipe Gesture State
@@ -56,8 +159,14 @@ function App() {
     const isLeftSwipe = distance > minSwipeDistance;
     const isRightSwipe = distance < -minSwipeDistance;
 
-    if (isLeftSwipe && canGoNext) handleNextMonth(); // Swipe left -> Next Month
-    if (isRightSwipe && canGoPrev) handlePrevMonth(); // Swipe right -> Prev Month
+    if (isLeftSwipe && canGoNext) {
+      handleNextMonth(); 
+      if (navigator.vibrate) navigator.vibrate([30, 50, 30]); // <-- ADD THIS
+    }
+    if (isRightSwipe && canGoPrev) {
+      handlePrevMonth(); 
+      if (navigator.vibrate) navigator.vibrate([30, 50, 30]); // <-- ADD THIS
+    }
   };
 
   const [activeTab, setActiveTab] = useState('main');
@@ -73,18 +182,14 @@ function App() {
     
     if (savedCats) setCategories(JSON.parse(savedCats));
     else setCategories([
-      { id: 'c1', name: 'Monthly Income', type: 'add', expected: 5000 },
+      { id: 'c1', name: 'Weekly Income', type: 'add', expected: 5000 },
       { id: 'c2', name: 'Bills', type: 'minus', expected: 1500 },
       { id: 'c3', name: 'Other Expenses', type: 'minus', expected: 500 },
       { id: 'c4', name: 'Debt', type: 'minus', expected: 300 }
     ]);
 
     if (savedTxns) setTransactions(JSON.parse(savedTxns));
-    else setTransactions([
-      { id: 1, categoryId: 'c2', name: 'Electricity', amount: 0, type: 'minus' },
-      { id: 2, categoryId: 'c2', name: 'Water', amount: 0, type: 'minus' },
-      { id: 3, categoryId: 'c2', name: 'Internet', amount: 0, type: 'minus' }
-    ]);
+    else setTransactions([]);
   }, [viewedMonthStr]);
 
   // 2. Save data automatically to the SPECIFIC month's storage key
@@ -114,6 +219,7 @@ function App() {
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
+    if (navigator.vibrate) navigator.vibrate(50);
     setItemName('');
     setItemAmount('');
     setSelectedCategory('');
@@ -158,6 +264,7 @@ function App() {
     };
     
     setTransactions([...transactions, newTransaction]);
+    if (navigator.vibrate) navigator.vibrate(50);
     setItemName('');
     setItemAmount('');
     setSelectedCategory('');
@@ -240,25 +347,33 @@ function App() {
               </tr>
             </thead>
             <tbody>
-              {combinedTxns.map(item => (
-                <tr key={item.name}>
-                  <td>{item.name}</td>
-                  <td className="number-col" style={{ color: textColor, fontWeight: '500' }}>
-                    ₱{item.amount.toFixed(2)}
+              {combinedTxns.length === 0 ? (
+                <tr>
+                  <td colSpan={isUpdateMode ? "3" : "2"} style={{ textAlign: 'center', padding: '20px', color: '#aaa', fontStyle: 'italic' }}>
+                    No logs yet! Add your first item.
                   </td>
-                  {isUpdateMode && (
-                    <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
-                      <button 
-                        onClick={() => setDeleteConfirm({ isOpen: true, itemIds: item.ids, itemName: item.name })} 
-                        className="delete-button" 
-                        style={{ padding: '6px', margin: '0 auto', display: 'flex' }}
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </td>
-                  )}
                 </tr>
-              ))}
+              ) : (
+                combinedTxns.map(item => (
+                  <tr key={item.name}>
+                    <td>{item.name}</td>
+                    <td className="number-col" style={{ color: textColor, fontWeight: '500' }}>
+                      ₱{item.amount.toFixed(2)}
+                    </td>
+                    {isUpdateMode && (
+                      <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
+                        <button 
+                          onClick={() => setDeleteConfirm({ isOpen: true, itemIds: item.ids, itemName: item.name })} 
+                          className="delete-button" 
+                          style={{ padding: '6px', margin: '0 auto', display: 'flex' }}
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))
+              )}
               <tr className={`total-row ${isIncome ? 'income-total' : 'expense-total'}`}>
                 <td>BUDGET: ₱{cat.expected.toFixed(2)}</td>
                 <td className="number-col">₱{actualTotal.toFixed(2)}</td>
@@ -298,10 +413,65 @@ function App() {
     });
   };
 
+  // Generates the Savings Card with optional action buttons
+  const renderSavingsCard = (showActions) => (
+    <div className="summary-card" style={{ marginBottom: '20px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+        <h3 style={{ color: 'var(--dark-magenta)', margin: 0 }}>Savings Goal</h3>
+        
+        {/* Only show the Edit Goal button if showActions is true */}
+        {showActions && (
+          <button 
+            onClick={() => setSavingsModal({ isOpen: true, mode: 'goal' })}
+            style={{ background: 'none', border: 'none', color: 'var(--dark-magenta)', cursor: 'pointer' }}
+          >
+            <Edit2 size={18} />
+          </button>
+        )}
+      </div>
+      
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--vivid-cyan)' }}>
+          ₱{savingsData.current.toFixed(2)}
+        </span>
+        <span style={{ fontSize: '1rem', color: '#888', fontWeight: 'bold' }}>
+          / ₱{savingsData.goal.toFixed(2)}
+        </span>
+      </div>
+
+      {/* Progress Bar */}
+      <div style={{ width: '100%', height: '12px', backgroundColor: '#e5e5ea', borderRadius: '6px', margin: '15px 0', overflow: 'hidden' }}>
+        <div style={{ width: `${Math.min((savingsData.current / savingsData.goal) * 100, 100)}%`, height: '100%', backgroundColor: 'var(--vivid-cyan)', transition: 'width 0.3s ease' }}></div>
+      </div>
+      
+      {/* Only show the Deposit and Withdraw buttons if showActions is true */}
+      {showActions && (
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button 
+            onClick={() => setSavingsModal({ isOpen: true, mode: 'deposit' })}
+            className="submit-button" 
+            style={{ backgroundColor: 'var(--vivid-cyan)', padding: '10px', fontSize: '0.9rem', flex: 1 }}
+          >
+            + Deposit
+          </button>
+          <button 
+            onClick={() => setSavingsModal({ isOpen: true, mode: 'withdraw' })}
+            className="submit-button" 
+            style={{ backgroundColor: '#e5e5ea', color: '#333', padding: '10px', fontSize: '0.9rem', flex: 1 }}
+          >
+            - Withdraw
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
   const renderContent = () => {
     if (activeTab === 'main') {
       return (
         <div className="budget-dashboard">
+          
+          {/* 1. MAIN SUMMARY CARD (Left to Spend) */}
           <div className="summary-card">
             <div className="balance">
               <h2>Left to Spend</h2>
@@ -318,8 +488,14 @@ function App() {
               </div>
             </div>
           </div>
+
+          {/* Render Savings Card WITHOUT buttons */}
+          {renderSavingsCard(false)}
+
+          {/* 3. CATEGORY TABLES */}
           {getCategoryTables('add')}
           {getCategoryTables('minus')}
+          
         </div>
       );
     }
@@ -393,6 +569,9 @@ function App() {
     if (activeTab === 'update') {
       return (
         <div className="budget-dashboard">
+
+          {/* Render Savings Card WITH buttons */}
+          {renderSavingsCard(true)}
           
           <div className="form-card" style={{marginBottom: '20px'}}>
             {!showAddCategory ? (
@@ -423,6 +602,17 @@ function App() {
 
           {getCategoryTables('add', true)}
           {getCategoryTables('minus', true)}
+
+          {/* Hidden Factory Reset Button */}
+          <div style={{ textAlign: 'center', marginTop: '40px', paddingBottom: '20px' }}>
+            <button 
+              ref={resetButtonRef} 
+              onClick={handleResetClick}
+              style={{ background: 'none', border: 'none', color: '#ccc', fontSize: '0.75rem', cursor: 'pointer' }}
+            >
+              Reset App Data
+            </button>
+          </div>
 
           {/* Custom Confirmation Modal */}
           {confirmDialog.isOpen && (
@@ -474,7 +664,13 @@ function App() {
   return (
     <div className="app-container">
       <header className="header">
-        <img src="/wordLogo.png" alt="Akwarts Logo" className="header-logo" />
+        <img 
+          src="/wordLogo.png" 
+          alt="Akwarts Logo" 
+          className="header-logo" 
+          onClick={() => setActiveTab('main')}
+          style={{ cursor: 'pointer' }}
+        />
         
         <div className="month-pill">
           <Calendar size={16} color="var(--dark-magenta)" />
@@ -495,6 +691,81 @@ function App() {
       >
         {renderContent()}
       </main>
+
+      {/* Savings Action Modal */}
+      {savingsModal.isOpen && (
+        <div style={{position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 100}}>
+          <div style={{backgroundColor: 'var(--white)', padding: '25px', borderRadius: '15px', width: '85%', maxWidth: '320px', textAlign: 'center', boxShadow: '0 10px 25px rgba(0,0,0,0.2)'}}>
+            <h3 style={{color: 'var(--dark-magenta)', marginBottom: '15px'}}>
+              {savingsModal.mode === 'goal' ? 'Set Savings Goal' : savingsModal.mode === 'deposit' ? 'Deposit to Savings' : 'Withdraw from Savings'}
+            </h3>
+            
+            {/* Show income dropdown for deposits and withdrawals */}
+            {savingsModal.mode !== 'goal' && (
+              <select 
+                value={selectedIncomeId} 
+                onChange={(e) => { setSelectedIncomeId(e.target.value); setSavingsError(''); }}
+                className="input-field"
+                style={{ marginBottom: '10px', ...(savingsError === 'Select an income source!' ? { borderColor: 'var(--vivid-crimson)' } : {}) }}
+              >
+                <option value="" disabled>Select Income Item...</option>
+                {transactions.filter(t => t.type === 'add').map(t => (
+                  <option key={t.id} value={t.id}>{t.name} (₱{t.amount.toFixed(2)})</option>
+                ))}
+              </select>
+            )}
+
+            <input 
+              type="number" 
+              placeholder={savingsError || "Amount (₱)"} 
+              value={savingsInput}
+              onChange={(e) => { setSavingsInput(e.target.value); setSavingsError(''); }}
+              className={`input-field ${savingsError && savingsError !== 'Select an income source!' ? 'shake-error' : ''}`}
+              style={{ marginBottom: '15px', ...(savingsError && savingsError !== 'Select an income source!' ? { borderColor: 'var(--vivid-crimson)' } : {}) }}
+              autoFocus={savingsModal.mode === 'goal'}
+            />
+
+            <div style={{display: 'flex', gap: '15px'}}>
+              <button onClick={handleSavingsSubmit} className="submit-button" style={{backgroundColor: 'var(--vivid-cyan)', flex: 1}}>Confirm</button>
+              <button onClick={() => { setSavingsModal({isOpen: false, mode: ''}); setSavingsInput(''); setSavingsError(''); setSelectedIncomeId(''); }} className="submit-button" style={{backgroundColor: '#e5e5ea', color: '#333', flex: 1}}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Factory Reset Confirmation Modal */}
+      {showResetConfirm && (
+        <div style={{position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 200}}>
+          <div style={{backgroundColor: 'var(--white)', padding: '25px', borderRadius: '15px', width: '85%', maxWidth: '320px', textAlign: 'center', boxShadow: '0 10px 25px rgba(0,0,0,0.5)'}}>
+            <h3 style={{color: 'var(--vivid-crimson)', marginBottom: '15px'}}>WARNING</h3>
+            
+            <p style={{marginBottom: '25px', color: '#333', fontWeight: 'bold', fontSize: '1.1rem'}}>
+              Are you sure? All data will be lost.
+            </p>
+            
+            <div style={{display: 'flex', flexDirection: 'column', gap: '15px'}}>
+              {/* Highlighted NO button */}
+              <button 
+                onClick={() => { setShowResetConfirm(false); setResetClicks(0); }} 
+                className="submit-button" 
+                style={{backgroundColor: 'var(--vivid-cyan)', color: 'var(--dark-magenta)', padding: '15px', fontSize: '1.1rem', fontWeight: '800'}}
+              >
+                NO, KEEP MY DATA
+              </button>
+              
+              {/* Muted YES button */}
+              <button 
+                onClick={executeFactoryReset} 
+                className="submit-button" 
+                style={{backgroundColor: '#ffe5e5', color: 'var(--vivid-crimson)', padding: '10px'}}
+              >
+                Yes, delete everything
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <nav className="tab-bar">
         <button className={activeTab === 'main' ? 'active' : ''} onClick={() => handleTabChange('main')}>
           <Home size={28} />
