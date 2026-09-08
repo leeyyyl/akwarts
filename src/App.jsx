@@ -60,6 +60,64 @@ function App() {
     }
   };
 
+  // CSV Export & Backup System
+  const handleExportCSV = () => {
+    // 1. Setup CSV Headers
+    let csvContent = "Month,Date,Time,Type,Category,Item,Amount,Recurring\n";
+
+    // 2. Loop through all local storage keys to find every saved month
+    const storageKeys = Object.keys(localStorage);
+    const txnKeys = storageKeys.filter(key => key.startsWith('akwartsTxns_'));
+
+    txnKeys.forEach(txnKey => {
+      const monthStr = txnKey.replace('akwartsTxns_', '');
+      const catKey = `akwartsCats_${monthStr}`;
+      
+      const monthTxns = JSON.parse(localStorage.getItem(txnKey) || '[]');
+      const monthCats = JSON.parse(localStorage.getItem(catKey) || '[]');
+
+      // 3. Create a map of category ID to Name for quick lookup
+      const catMap = {};
+      monthCats.forEach(c => { catMap[c.id] = c.name; });
+
+      // 4. Append each transaction to the CSV string
+      monthTxns.forEach(t => {
+        const dateObj = new Date(t.id); // Using the ID which is Date.now()
+        const dateString = dateObj.toLocaleDateString();
+        const timeString = dateObj.toLocaleTimeString();
+        const catName = catMap[t.categoryId] || 'Unknown';
+        const typeStr = t.type === 'add' ? 'Income' : 'Expense';
+        const recurringStr = t.isRecurring ? 'Yes' : 'No';
+        
+        // Escape quotes to prevent spreadsheet formatting errors
+        const safeItemName = `"${t.name.replace(/"/g, '""')}"`;
+        const safeCatName = `"${catName.replace(/"/g, '""')}"`;
+
+        const row = `${monthStr},${dateString},${timeString},${typeStr},${safeCatName},${safeItemName},${t.amount},${recurringStr}`;
+        csvContent += row + "\n";
+      });
+    });
+
+    // 5. Generate the Filename: aKwartsData_YYYY-MM-DD.csv
+    const today = new Date();
+    // Format date as YYYY-MM-DD for a clean filename
+    const dateFormatted = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const fileName = `aKwartsData_${dateFormatted}.csv`;
+
+    // 6. Trigger native download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    if (link.download !== undefined) {
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', fileName);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
   const executeFactoryReset = () => {
     localStorage.clear(); 
     window.location.reload(); 
@@ -178,17 +236,47 @@ function App() {
     const savedCats = localStorage.getItem(`akwartsCats_${viewedMonthStr}`);
     const savedTxns = localStorage.getItem(`akwartsTxns_${viewedMonthStr}`);
     
-    if (savedCats) setCategories(JSON.parse(savedCats));
-    else setCategories([
-      { id: 'c1', name: 'Weekly Income', type: 'add', expected: 0 },
-      { id: 'c2', name: 'Bills', type: 'minus', expected: 0 },
-      { id: 'c3', name: 'Other Expenses', type: 'minus', expected: 0 },
-      { id: 'c4', name: 'Debt', type: 'minus', expected: 0 }
-    ]);
+    // Get the key for the previous month so we can look back in time
+    const prevMonthDate = new Date(viewDate);
+    prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
+    const prevMonthKey = prevMonthDate.toLocaleString('default', { month: 'short', year: '2-digit' });
 
-    if (savedTxns) setTransactions(JSON.parse(savedTxns));
-    else setTransactions([]);
-  }, [viewedMonthStr]);
+    // --- CATEGORY LOADING ---
+    if (savedCats) {
+      setCategories(JSON.parse(savedCats));
+    } else {
+      // If brand new month, try to copy the previous month's categories first!
+      const prevCats = localStorage.getItem(`akwartsCats_${prevMonthKey}`);
+      if (prevCats && JSON.parse(prevCats).length > 0) {
+        setCategories(JSON.parse(prevCats));
+      } else {
+        // Ultimate fallback
+        setCategories([
+          { id: 'c1', name: 'Income', type: 'add', expected: 0 },
+          { id: 'c2', name: 'Bills', type: 'minus', expected: 0 },
+          { id: 'c3', name: 'Other Expenses', type: 'minus', expected: 0 },
+          { id: 'c4', name: 'Debt', type: 'minus', expected: 0 }
+        ]);
+      }
+    }
+
+    // --- TRANSACTION LOADING ---
+    if (savedTxns) {
+      setTransactions(JSON.parse(savedTxns));
+    } else {
+      // If brand new month, find last month's recurring items and clone them!
+      const prevTxns = localStorage.getItem(`akwartsTxns_${prevMonthKey}`);
+      if (prevTxns) {
+        const parsedPrevTxns = JSON.parse(prevTxns);
+        const clonedRecurringTxns = parsedPrevTxns
+          .filter(t => t.isRecurring)
+          .map((t, index) => ({ ...t, id: Date.now() + index })); // Give them brand new IDs for the new month
+        setTransactions(clonedRecurringTxns);
+      } else {
+        setTransactions([]);
+      }
+    }
+  }, [viewedMonthStr, viewDate]);
 
   // 2. Save data automatically to the SPECIFIC month's storage key
   useEffect(() => {
@@ -202,6 +290,8 @@ function App() {
   const [itemAmount, setItemAmount] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [formErrors, setFormErrors] = useState({ category: '', name: '', amount: '' });
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // NEW STATES for UI management
   const [showAddCategory, setShowAddCategory] = useState(false);
@@ -223,6 +313,8 @@ function App() {
     setFormErrors({ category: '', name: '', amount: '' });
     setEditingBudgets({});
     setShowAddCategory(false);
+    setIsRecurring(false);
+    setSearchQuery('');
   };
 
   const handleAddTransaction = (e, type) => {
@@ -257,13 +349,15 @@ function App() {
       categoryId: selectedCategory,
       name: itemName.trim(),
       amount: amount,
-      type: type 
+      type: type,
+      isRecurring: isRecurring
     };
     
     setTransactions([...transactions, newTransaction]);
     setItemName('');
     setItemAmount('');
     setSelectedCategory('');
+    setIsRecurring(false);
   };
 
   const handleDeleteTransaction = (idToDelete) => {
@@ -409,6 +503,82 @@ function App() {
     });
   };
 
+  // Generates a zero-dependency SVG Donut Chart for Expenses
+  const renderExpenseChart = () => {
+    // 1. Gather and sort the expense data
+    const expenseCats = categories.filter(c => c.type === 'minus');
+    const colors = ['var(--vivid-crimson)', 'var(--vivid-cyan)', 'var(--dark-magenta)', '#ffaa00', '#9d02d7', '#00bfa5', '#ff8c00']; 
+    
+    const chartData = expenseCats.map((cat, index) => {
+      const catTotal = transactions.filter(t => t.categoryId === cat.id).reduce((sum, t) => sum + t.amount, 0);
+      return { 
+        name: cat.name, 
+        amount: catTotal, 
+        color: colors[index % colors.length] 
+      };
+    }).filter(d => d.amount > 0).sort((a, b) => b.amount - a.amount); // Hide empty categories & sort by largest
+
+    // 2. Handle empty states
+    if (chartData.length === 0 || totalExpenses === 0) {
+      return null; // Don't show the chart if there are no expenses yet
+    }
+
+    let cumulativePercent = 0;
+
+    // 3. Render the SVG and Legend
+    return (
+      <div className="summary-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <h3 style={{ width: '100%', marginBottom: '15px', color: 'var(--dark-magenta)', fontWeight: '600' }}>Expense Breakdown</h3>
+        
+        <div style={{ position: 'relative', width: '160px', height: '160px' }}>
+          <svg width="100%" height="100%" viewBox="0 0 42 42" style={{ transform: 'rotate(-90deg)' }}>
+            {/* Background ring */}
+            <circle cx="21" cy="21" r="15.91549431" fill="transparent" stroke="var(--bg-gray)" strokeWidth="6" />
+            
+            {/* Dynamic data rings */}
+            {chartData.map((data) => {
+              const percent = (data.amount / totalExpenses) * 100;
+              const dashArray = `${percent} ${100 - percent}`;
+              const dashOffset = -cumulativePercent;
+              cumulativePercent += percent;
+              
+              return (
+                <circle
+                  key={data.name}
+                  cx="21"
+                  cy="21"
+                  r="15.91549431"
+                  fill="transparent"
+                  stroke={data.color}
+                  strokeWidth="6"
+                  strokeDasharray={dashArray}
+                  strokeDashoffset={dashOffset}
+                  style={{ transition: 'stroke-dasharray 0.5s ease-out' }}
+                />
+              );
+            })}
+          </svg>
+          
+          {/* Center Text */}
+          <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ fontSize: '0.75rem', color: '#888' }}>Total</span>
+            <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--dark-magenta)' }}>₱{totalExpenses.toFixed(0)}</span>
+          </div>
+        </div>
+        
+        {/* Dynamic Legend */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '12px', marginTop: '20px', width: '100%' }}>
+          {chartData.map((data) => (
+            <div key={data.name} style={{ display: 'flex', alignItems: 'center', fontSize: '0.85rem', color: '#555' }}>
+              <span style={{ width: '10px', height: '10px', backgroundColor: data.color, borderRadius: '50%', marginRight: '6px' }}></span>
+              {data.name} ({((data.amount / totalExpenses) * 100).toFixed(0)}%)
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   // Generates the Savings Card with optional action buttons
   const renderSavingsCard = (showActions) => (
     <div className="summary-card" style={{ marginBottom: '20px' }}>
@@ -488,6 +658,8 @@ function App() {
           {/* Render Savings Card WITHOUT buttons */}
           {renderSavingsCard(false)}
 
+          {renderExpenseChart()}
+
           {/* 3. CATEGORY TABLES */}
           {getCategoryTables('add')}
           {getCategoryTables('minus')}
@@ -499,7 +671,10 @@ function App() {
     if (activeTab === 'add' || activeTab === 'minus') {
       const isAdd = activeTab === 'add';
       const typeCats = categories.filter(c => c.type === activeTab);
-      const historyLogs = transactions.filter(t => t.type === activeTab).reverse();
+      const historyLogs = transactions
+        .filter(t => t.type === activeTab)
+        .filter(t => t.name.toLowerCase().includes(searchQuery.toLowerCase()))
+        .reverse();
       
       return (
         <div className="budget-dashboard">
@@ -535,6 +710,20 @@ function App() {
                 className={`input-field ${formErrors.amount ? 'shake-error' : ''}`}
                 style={formErrors.amount ? { borderColor: 'var(--vivid-crimson)' } : {}}
               />
+
+              {/* NEW RECURRING CHECKBOX */}
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: '20px', gap: '10px', padding: '0 5px' }}>
+                <input 
+                  type="checkbox" 
+                  id="recurring-check"
+                  checked={isRecurring}
+                  onChange={(e) => setIsRecurring(e.target.checked)}
+                  style={{ width: '18px', height: '18px', accentColor: isAdd ? 'var(--vivid-cyan)' : 'var(--vivid-crimson)' }}
+                />
+                <label htmlFor="recurring-check" style={{ color: 'var(--dark-magenta)', fontSize: '0.95rem', cursor: 'pointer' }}>
+                  Make this a recurring monthly item
+                </label>
+              </div>
               
               <button type="submit" className="submit-button" style={{ backgroundColor: isAdd ? 'var(--vivid-cyan)' : 'var(--vivid-crimson)' }}>
                 Record {isAdd ? 'Income' : 'Expense'}
@@ -544,6 +733,40 @@ function App() {
           
           <div className="summary-card">
             <h3>History Logs</h3>
+
+            {/* SEARCH BAR WITH EMBEDDED TEXT CLEAR */}
+            <div style={{ position: 'relative', marginTop: '15px', marginBottom: '5px' }}>
+              <input 
+                type="text" 
+                placeholder="Search history by name..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="input-field"
+                style={{ marginBottom: 0, paddingRight: '80px', width: '100%' }}
+              />
+              
+              {searchQuery && (
+                <button 
+                  onClick={() => setSearchQuery('')}
+                  style={{ 
+                    position: 'absolute',
+                    right: '15px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'transparent', 
+                    color: 'var(--vivid-crimson)', 
+                    border: 'none', 
+                    fontSize: '0.9rem',
+                    fontWeight: 'bold', 
+                    cursor: 'pointer',
+                    padding: 0
+                  }}
+                >
+                  X Clear
+                </button>
+              )}
+            </div>
+
             <div className="transaction-list" style={{marginTop: '15px'}}>
               {historyLogs.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '20px', color: '#aaa', fontStyle: 'italic' }}>
@@ -553,7 +776,14 @@ function App() {
                 historyLogs.map(t => (
                   <div key={t.id} className={`transaction-item ${t.type}`}>
                     <div className="transaction-info">
-                      <span className="transaction-name">{t.name}</span>
+                      <span className="transaction-name">
+                        {t.name}
+                        {t.isRecurring && (
+                          <span style={{ fontSize: '0.7rem', color: t.type === 'add' ? 'var(--vivid-cyan)' : 'var(--vivid-crimson)', marginLeft: '8px', verticalAlign: 'middle', border: `1px solid ${t.type === 'add' ? 'var(--vivid-cyan)' : 'var(--vivid-crimson)'}`, borderRadius: '4px', padding: '2px 4px' }}>
+                            RECURRING
+                          </span>
+                        )}
+                      </span>
                       <span style={{ fontSize: '0.8rem', color: '#999' }}>
                         {new Date(t.id).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                       </span>
@@ -604,6 +834,20 @@ function App() {
 
           {getCategoryTables('add', true)}
           {getCategoryTables('minus', true)}
+
+          {/* Data Export / Backup Button */}
+          <div style={{ padding: '0 20px', marginTop: '30px' }}>
+            <button 
+              onClick={handleExportCSV}
+              className="submit-button" 
+              style={{ backgroundColor: 'var(--vivid-cyan)', color: 'var(--dark-magenta)' }}
+            >
+              Export Data Backup (CSV)
+            </button>
+            <p style={{ textAlign: 'center', fontSize: '0.8rem', color: '#888', marginTop: '10px' }}>
+              Downloads your complete history to your device.
+            </p>
+          </div>
 
           {/* Hidden Factory Reset Button */}
           <div style={{ textAlign: 'center', marginTop: '40px', paddingBottom: '20px' }}>
