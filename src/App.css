@@ -400,10 +400,18 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Tactile Button Press */
-button:active, .tab-button:active, .submit-button:active {
+/* Tactile Button Press (Target specific classes only) */
+.submit-button:active, .delete-button:active {
   transform: scale(0.95);
   transition: transform 0.1s ease;
+}
+
+/* Forcefully prevent the tab bar and its SVG icons from scaling */
+.tab-bar button, 
+.tab-bar button:active,
+.tab-bar button svg {
+  transform: none !important;
+  scale: 1 !important;
 }
 
 /* Error Shake Animation */
