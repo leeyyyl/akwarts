@@ -52,7 +52,7 @@ body {
 
 /* App Container */
 .app-container {
-  max-width: 420px;
+  max-width: 850px;
   width: 100%; /* Added to ensure it fills the space properly on mobile */
   margin: 0 auto; 
   background-color: var(--bg-gray); 
@@ -429,4 +429,30 @@ body {
 /* Savings Glow */
 .savings-glow {
   box-shadow: 0 0 10px rgba(0, 255, 255, 0.4);
+}
+
+/* --- TABLET & IPAD OPTIMIZATIONS --- */
+@media (min-width: 768px) {
+  .budget-dashboard {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 25px;
+    align-items: start;
+  }
+
+  /* Force the main summary, savings cards, and forms to span across both columns */
+  .budget-dashboard > .summary-card:nth-child(1),
+  .budget-dashboard > .summary-card:nth-child(2),
+  .form-card {
+    grid-column: 1 / -1;
+  }
+
+  /* Slightly larger fonts for readability on bigger screens */
+  .amount-large {
+    font-size: 3rem;
+  }
+  
+  .table-title {
+    font-size: 1.1rem;
+  }
 }
