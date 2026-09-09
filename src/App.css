@@ -431,8 +431,12 @@ body {
   box-shadow: 0 0 10px rgba(0, 255, 255, 0.4);
 }
 
-/* --- TABLET & IPAD OPTIMIZATIONS --- */
+/* --- TABLET PORTRAIT OPTIMIZATIONS --- */
 @media (min-width: 768px) {
+  .app-container {
+    max-width: 92vw; /* Flexes dynamically with the screen instead of locking to 850px */
+  }
+
   .budget-dashboard {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -447,12 +451,18 @@ body {
     grid-column: 1 / -1;
   }
 
-  /* Slightly larger fonts for readability on bigger screens */
   .amount-large {
     font-size: 3rem;
   }
   
   .table-title {
     font-size: 1.1rem;
+  }
+}
+
+/* --- IPAD LANDSCAPE & DESKTOP OPTIMIZATIONS --- */
+@media (min-width: 1024px) {
+  .app-container {
+    max-width: 1100px; /* Allows the container to stretch comfortably in landscape */
   }
 }
