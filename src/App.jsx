@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Home, PlusCircle, MinusCircle, FileEdit, Trash2, Edit2, Check, X, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import './App.css';
 import UpdatePrompt from './UpdatePrompt';
+import { supabase } from './supabaseClient';
 
 function App() {
   // Date Navigation State
@@ -231,26 +232,24 @@ function App() {
   const [categories, setCategories] = useState([]);
   const [transactions, setTransactions] = useState([]);
 
-  // 1. Load data whenever the viewed month changes
+  // 1. Load data from Supabase whenever the viewed month changes
   useEffect(() => {
-    const savedCats = localStorage.getItem(`akwartsCats_${viewedMonthStr}`);
-    const savedTxns = localStorage.getItem(`akwartsTxns_${viewedMonthStr}`);
-    
-    // Get the key for the previous month so we can look back in time
-    const prevMonthDate = new Date(viewDate);
-    prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
-    const prevMonthKey = prevMonthDate.toLocaleString('default', { month: 'short', year: '2-digit' });
+    const fetchCloudData = async () => {
+      // Securely identify the logged-in user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-    // --- CATEGORY LOADING ---
-    if (savedCats) {
-      setCategories(JSON.parse(savedCats));
-    } else {
-      // If brand new month, try to copy the previous month's categories first!
-      const prevCats = localStorage.getItem(`akwartsCats_${prevMonthKey}`);
-      if (prevCats && JSON.parse(prevCats).length > 0) {
-        setCategories(JSON.parse(prevCats));
+      // Fetch Categories for this specific month
+      const { data: cloudCats, error: catErr } = await supabase
+        .from('categories')
+        .select('*')
+        .eq('month_key', viewedMonthStr)
+        .eq('user_id', user.id);
+
+      if (cloudCats && cloudCats.length > 0) {
+        setCategories(cloudCats);
       } else {
-        // Ultimate fallback
+        // Apply defaults if the cloud is completely empty for this month
         setCategories([
           { id: 'c1', name: 'Income', type: 'add', expected: 0 },
           { id: 'c2', name: 'Bills', type: 'minus', expected: 0 },
@@ -258,33 +257,25 @@ function App() {
           { id: 'c4', name: 'Debt', type: 'minus', expected: 0 }
         ]);
       }
-    }
 
-    // --- TRANSACTION LOADING ---
-    if (savedTxns) {
-      setTransactions(JSON.parse(savedTxns));
-    } else {
-      // If brand new month, find last month's recurring items and clone them!
-      const prevTxns = localStorage.getItem(`akwartsTxns_${prevMonthKey}`);
-      if (prevTxns) {
-        const parsedPrevTxns = JSON.parse(prevTxns);
-        const clonedRecurringTxns = parsedPrevTxns
-          .filter(t => t.isRecurring)
-          .map((t, index) => ({ ...t, id: Date.now() + index })); // Give them brand new IDs for the new month
-        setTransactions(clonedRecurringTxns);
-      } else {
-        setTransactions([]);
-      }
-    }
-  }, [viewedMonthStr, viewDate]);
+      // Fetch Transactions for this specific month
+      const { data: cloudTxns, error: txnErr } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('month_key', viewedMonthStr)
+        .eq('user_id', user.id);
 
-  // 2. Save data automatically to the SPECIFIC month's storage key
-  useEffect(() => {
-    if (categories.length > 0) {
-      localStorage.setItem(`akwartsCats_${viewedMonthStr}`, JSON.stringify(categories));
-      localStorage.setItem(`akwartsTxns_${viewedMonthStr}`, JSON.stringify(transactions));
-    }
-  }, [transactions, categories, viewedMonthStr]);
+      setTransactions(
+        (cloudTxns || []).map(t => ({
+          ...t,
+          categoryId: t.category_id,
+          isRecurring: t.is_recurring
+        }))
+      );
+    };
+
+    fetchCloudData();
+  }, [viewedMonthStr]);
 
   const [itemName, setItemName] = useState('');
   const [itemAmount, setItemAmount] = useState('');
@@ -317,35 +308,32 @@ function App() {
     setSearchQuery('');
   };
 
-  const handleAddTransaction = (e, type) => {
+  const handleAddTransaction = async (e, type) => {
     e.preventDefault(); 
     const amount = parseFloat(itemAmount);
     let errors = { category: '', name: '', amount: '' };
     let hasError = false;
     
-    // Check each field and set its specific error
-    if (!selectedCategory) {
-      errors.category = 'Select a category!';
-      hasError = true;
-    }
-    if (itemName.trim() === '') {
-      errors.name = 'Enter transaction name!';
-      hasError = true;
-    }
-    if (isNaN(amount) || amount <= 0) {
-      errors.amount = 'Enter valid amount!';
-      hasError = true;
-    }
+    if (!selectedCategory) { errors.category = 'Select a category!'; hasError = true; }
+    if (itemName.trim() === '') { errors.name = 'Enter transaction name!'; hasError = true; }
+    if (isNaN(amount) || amount <= 0) { errors.amount = 'Enter valid amount!'; hasError = true; }
 
     if (hasError) {
       setFormErrors(errors);
       return;
     }
 
-    // If everything passes, clear errors and save
     setFormErrors({ category: '', name: '', amount: '' });
-    const newTransaction = {
-      id: Date.now(),
+    
+    // 1. Get the current secure user
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const newId = Date.now().toString(); // Supabase uses TEXT for IDs
+
+    // 2. Format for React (Keeps the UI instant)
+    const uiTransaction = {
+      id: newId,
       categoryId: selectedCategory,
       name: itemName.trim(),
       amount: amount,
@@ -353,15 +341,41 @@ function App() {
       isRecurring: isRecurring
     };
     
-    setTransactions([...transactions, newTransaction]);
+    // 3. Format for Supabase Database
+    const dbTransaction = {
+      id: newId,
+      user_id: user.id,
+      month_key: viewedMonthStr,
+      category_id: selectedCategory,
+      name: itemName.trim(),
+      amount: amount,
+      type: type,
+      is_recurring: isRecurring
+    };
+    
+    // Optimistic Update: Paint the screen immediately
+    setTransactions([...transactions, uiTransaction]);
     setItemName('');
     setItemAmount('');
     setSelectedCategory('');
     setIsRecurring(false);
+
+    // Push to cloud in the background
+    const { error } = await supabase.from('transactions').insert([dbTransaction]);
+    if (error) console.error("Error saving to cloud:", error);
   };
 
-  const handleDeleteTransaction = (idToDelete) => {
+  const handleDeleteTransaction = async (idToDelete) => {
+    // Optimistic Update: Instantly remove it from the screen
     setTransactions(transactions.filter(t => t.id !== idToDelete));
+
+    // Delete it permanently from the cloud
+    const { error } = await supabase
+      .from('transactions')
+      .delete()
+      .eq('id', idToDelete);
+
+    if (error) console.error("Error deleting from cloud:", error);
   };
 
   const handleEditClick = (cat) => {
