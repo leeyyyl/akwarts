@@ -135,34 +135,18 @@ function App() {
   };
 
   // Global Savings State
-  const [savingsData, setSavingsData] = useState(() => {
-    const saved = localStorage.getItem('akwartsSavings');
-    return saved ? JSON.parse(saved) : { current: 0, goal: 0 };
-  });
+  const [savingsData, setSavingsData] = useState({ current: 0, goal: 0 });
   const [savingsModal, setSavingsModal] = useState({ isOpen: false, mode: 'deposit' }); // 'deposit', 'withdraw', 'goal'
   const [savingsInput, setSavingsInput] = useState('');
   const [savingsError, setSavingsError] = useState('');
   const [selectedIncomeId, setSelectedIncomeId] = useState('');
 
-  // Save global savings to local storage
-  useEffect(() => {
-    localStorage.setItem('akwartsSavings', JSON.stringify(savingsData));
-  }, [savingsData]);
-
   // Global Debt State (Array of individual debts)
-  const [debts, setDebts] = useState(() => {
-    const saved = localStorage.getItem('akwartsDebts');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [debts, setDebts] = useState([]);
   const [debtModal, setDebtModal] = useState({ isOpen: false, mode: 'payment' }); 
   const [debtInput, setDebtInput] = useState({ name: '', amount: '' });
   const [selectedDebtId, setSelectedDebtId] = useState('');
   const [debtError, setDebtError] = useState('');
-
-  // Save global debt and handle monthly rollover
-  useEffect(() => {
-    localStorage.setItem('akwartsDebts', JSON.stringify(debts));
-  }, [debts]);
 
   useEffect(() => {
     const savedMonth = localStorage.getItem('akwartsDebtMonth');
@@ -179,7 +163,7 @@ function App() {
   }, []);
 
   // Process Savings Deposits, Withdrawals, and Goals
-  const handleSavingsSubmit = () => {
+  const handleSavingsSubmit = async () => {
     const amount = parseFloat(savingsInput);
     if (isNaN(amount) || amount <= 0) {
       setSavingsError('Enter a valid amount!');
@@ -222,6 +206,19 @@ function App() {
       
       setTransactions(updatedTransactions);
     }
+
+    // Push updated savings to Supabase
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const newCurrent = savingsModal.mode === 'withdraw' ? savingsData.current - amount : (savingsModal.mode === 'deposit' ? savingsData.current + amount : savingsData.current);
+      const newGoal = savingsModal.mode === 'goal' ? amount : savingsData.goal;
+      
+      await supabase.from('savings').upsert({
+        user_id: user.id,
+        current_amount: newCurrent,
+        goal_amount: newGoal
+      });
+    }
     
     setSavingsError('');
     setSavingsModal({ isOpen: false, mode: '' });
@@ -229,20 +226,93 @@ function App() {
     setSelectedIncomeId('');
   };
 
+  // One-Time Cloud Migration for Legacy Savings & Debts
+  useEffect(() => {
+    const migrateLegacyData = async () => {
+      // 1. Check if this device has already been migrated
+      const hasMigrated = localStorage.getItem('akwartsCloudMigrated_v1');
+      if (hasMigrated) return;
+
+      // 2. Identify the user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return; // Wait until they are logged in
+
+      let migrationSuccessful = true;
+
+      // 3. Migrate Savings
+      const localSavings = localStorage.getItem('akwartsSavings');
+      if (localSavings) {
+        const parsedSavings = JSON.parse(localSavings);
+        if (parsedSavings.current > 0 || parsedSavings.goal > 0) {
+          const { error: savingsErr } = await supabase.from('savings').upsert({
+            user_id: user.id,
+            current_amount: parsedSavings.current,
+            goal_amount: parsedSavings.goal
+          });
+          if (savingsErr) migrationSuccessful = false;
+        }
+      }
+
+      // 4. Migrate Debts
+      const localDebts = localStorage.getItem('akwartsDebts');
+      if (localDebts) {
+        const parsedDebts = JSON.parse(localDebts);
+        if (parsedDebts.length > 0) {
+          // Attach the user_id to every legacy debt item before pushing
+          const debtsToPush = parsedDebts.map(d => ({
+            ...d,
+            user_id: user.id
+          }));
+          
+          const { error: debtsErr } = await supabase.from('debts').upsert(debtsToPush);
+          if (debtsErr) migrationSuccessful = false;
+        }
+      }
+
+      // 5. Lock the migration and permanently delete the old local data
+      if (migrationSuccessful) {
+        localStorage.setItem('akwartsCloudMigrated_v1', 'true');
+        localStorage.removeItem('akwartsSavings');
+        localStorage.removeItem('akwartsDebts');
+      }
+    };
+
+    migrateLegacyData();
+  }, []);
+
   // Process Debt Payments and Adding Debts
-  const handleDebtSubmit = () => {
+  const handleDebtSubmit = async () => {
     const amount = parseFloat(debtInput.amount);
     if (isNaN(amount) || amount <= 0) {
       setDebtError('Enter a valid amount!');
       return;
     }
 
+    // Securely identify the logged-in user for the cloud
+    const { data: { user } } = await supabase.auth.getUser();
+
     if (debtModal.mode === 'add') {
       if (!debtInput.name.trim()) {
         setDebtError('Enter a debt name!');
         return;
       }
-      setDebts([...debts, { id: Date.now().toString(), name: debtInput.name, goal: amount, remaining: amount }]);
+      
+      const newId = Date.now().toString();
+      const newDebt = { 
+        id: newId, 
+        user_id: user?.id, 
+        name: debtInput.name, 
+        goal: amount, 
+        remaining: amount 
+      };
+      
+      // Optimistic UI Update: Instantly show on screen
+      setDebts([...debts, newDebt]);
+      
+      // Push to Cloud
+      if (user) {
+        await supabase.from('debts').insert([newDebt]);
+      }
       
     } else if (debtModal.mode === 'payment') {
       if (!selectedDebtId) { setDebtError('Select a debt to pay!'); return; }
@@ -256,16 +326,27 @@ function App() {
       if (amount > targetTxn.amount) { setDebtError('Exceeds item balance!'); return; }
       if (amount > debts[debtIndex].remaining) { setDebtError('Exceeds remaining debt!'); return; }
 
-      // Apply payment to income and reduce specific debt
+      // 1. Deduct payment from the income item (Transactions)
       const updatedTxns = [...transactions];
       updatedTxns[targetTxnIndex] = { ...targetTxn, amount: targetTxn.amount - amount };
       setTransactions(updatedTxns);
       
+      // 2. Reduce the specific debt (Debts)
+      const newRemaining = debts[debtIndex].remaining - amount;
       const updatedDebts = [...debts];
-      updatedDebts[debtIndex] = { ...updatedDebts[debtIndex], remaining: updatedDebts[debtIndex].remaining - amount };
+      updatedDebts[debtIndex] = { ...updatedDebts[debtIndex], remaining: newRemaining };
       setDebts(updatedDebts);
+
+      // 3. Push updated Debt balance to the Cloud
+      if (user) {
+        await supabase
+          .from('debts')
+          .update({ remaining: newRemaining })
+          .eq('id', selectedDebtId);
+      }
     }
     
+    // Clear modals and inputs
     setDebtError('');
     setDebtModal({ isOpen: false, mode: '' });
     setDebtInput({ name: '', amount: '' });
@@ -329,6 +410,25 @@ function App() {
           { id: 'c3', name: 'Other Expenses', type: 'minus', expected: 0 }
         ]);
       }
+
+      // Fetch Global Savings
+      const { data: cloudSavings } = await supabase
+        .from('savings')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      if (cloudSavings) {
+        setSavingsData({ current: cloudSavings.current_amount, goal: cloudSavings.goal_amount });
+      }
+
+      // Fetch Global Debts
+      const { data: cloudDebts } = await supabase
+        .from('debts')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (cloudDebts) setDebts(cloudDebts);
 
       // Fetch Transactions for this specific month
       const { data: cloudTxns, error: txnErr } = await supabase
@@ -432,23 +532,88 @@ function App() {
     setSelectedCategory('');
     setIsRecurring(false);
 
-    // Push to cloud in the background
+    // Push to cloud in the background, or queue it if offline
     const { error } = await supabase.from('transactions').insert([dbTransaction]);
-    if (error) console.error("Error saving to cloud:", error);
+    
+    if (error) {
+      // Catch the network error and stash the item locally
+      const currentQueue = JSON.parse(localStorage.getItem('akwartsSyncQueue') || '[]');
+      currentQueue.push(dbTransaction);
+      localStorage.setItem('akwartsSyncQueue', JSON.stringify(currentQueue));
+    }
   };
 
   const handleDeleteTransaction = async (idToDelete) => {
     // Optimistic Update: Instantly remove it from the screen
     setTransactions(transactions.filter(t => t.id !== idToDelete));
 
-    // Delete it permanently from the cloud
+    // Attempt to delete from the cloud
     const { error } = await supabase
       .from('transactions')
       .delete()
       .eq('id', idToDelete);
 
-    if (error) console.error("Error deleting from cloud:", error);
+    if (error) {
+      // Catch the network error and stash the ID locally for later deletion
+      const currentQueue = JSON.parse(localStorage.getItem('akwartsDeleteQueue') || '[]');
+      currentQueue.push(idToDelete);
+      localStorage.setItem('akwartsDeleteQueue', JSON.stringify(currentQueue));
+    }
   };
+
+  // Auto-Sync Offline Transactions & Deletions to the Cloud
+  useEffect(() => {
+    const syncPendingTransactions = async () => {
+      // 1. Process Pending Deletions
+      const deleteQueue = JSON.parse(localStorage.getItem('akwartsDeleteQueue') || '[]');
+      if (deleteQueue.length > 0) {
+        // Supabase allows deleting multiple rows at once using .in()
+        const { error: deleteErr } = await supabase.from('transactions').delete().in('id', deleteQueue);
+        if (!deleteErr) {
+          localStorage.removeItem('akwartsDeleteQueue');
+        } else {
+          console.error("Delete sync failed:", deleteErr);
+        }
+      }
+
+      // 2. Process Pending Additions
+      const insertQueue = JSON.parse(localStorage.getItem('akwartsSyncQueue') || '[]');
+      if (insertQueue.length > 0) {
+        const { error: insertErr } = await supabase.from('transactions').insert(insertQueue);
+        if (!insertErr) {
+          localStorage.removeItem('akwartsSyncQueue');
+        } else {
+          console.error("Insert sync failed:", insertErr);
+        }
+      }
+
+      // 3. Process Pending Category Updates
+      const catUpdateQueue = JSON.parse(localStorage.getItem('akwartsCatUpdateQueue') || '[]');
+      if (catUpdateQueue.length > 0) {
+        // Process each update individually
+        for (const cat of catUpdateQueue) {
+           await supabase.from('categories').update({ expected: cat.expected }).eq('id', cat.id);
+        }
+        localStorage.removeItem('akwartsCatUpdateQueue');
+      }
+
+      // 4. Process Pending Category Inserts
+      const catInsertQueue = JSON.parse(localStorage.getItem('akwartsCatInsertQueue') || '[]');
+      if (catInsertQueue.length > 0) {
+        const { error: catInsErr } = await supabase.from('categories').insert(catInsertQueue);
+        if (!catInsErr) {
+          localStorage.removeItem('akwartsCatInsertQueue');
+        } else {
+          console.error("Category insert sync failed:", catInsErr);
+        }
+      }
+    };
+
+    window.addEventListener('online', syncPendingTransactions);
+    if (navigator.onLine) syncPendingTransactions();
+
+    return () => window.removeEventListener('online', syncPendingTransactions);
+  }, []);
 
   const handleEditClick = (cat) => {
     setEditingBudgets({ ...editingBudgets, [cat.id]: { value: cat.expected } });
@@ -470,12 +635,48 @@ function App() {
     setConfirmDialog({ isOpen: false, catId: null, newBudget: '' });
   };
 
-  const updateCategoryBudget = (catId, newBudget) => {
-    setCategories(categories.map(c => c.id === catId ? { ...c, expected: parseFloat(newBudget) || 0 } : c));
+ const updateCategoryBudget = async (catId, newBudget) => {
+    const budgetValue = parseFloat(newBudget) || 0;
+    
+    // Optimistic UI Update
+    setCategories(categories.map(c => c.id === catId ? { ...c, expected: budgetValue } : c));
+
+    // Attempt to update the cloud
+    const { error } = await supabase
+      .from('categories')
+      .update({ expected: budgetValue })
+      .eq('id', catId);
+
+    if (error) {
+      // Catch offline error and queue the update
+      const queue = JSON.parse(localStorage.getItem('akwartsCatUpdateQueue') || '[]');
+      queue.push({ id: catId, expected: budgetValue });
+      localStorage.setItem('akwartsCatUpdateQueue', JSON.stringify(queue));
+    }
   };
   
-  const handleAddCategory = (name, type) => {
-    if(name.trim()) setCategories([...categories, { id: Date.now().toString(), name, type, expected: 0 }]);
+  const handleAddCategory = async (name, type) => {
+    if (!name.trim()) return;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const newId = Date.now().toString();
+    const uiCategory = { id: newId, name, type, expected: 0 };
+    const dbCategory = { id: newId, user_id: user.id, month_key: viewedMonthStr, name, type, expected: 0 };
+
+    // Optimistic UI Update
+    setCategories([...categories, uiCategory]);
+
+    // Attempt to push to the cloud
+    const { error } = await supabase.from('categories').insert([dbCategory]);
+
+    if (error) {
+      // Catch offline error and queue the insertion
+      const queue = JSON.parse(localStorage.getItem('akwartsCatInsertQueue') || '[]');
+      queue.push(dbCategory);
+      localStorage.setItem('akwartsCatInsertQueue', JSON.stringify(queue));
+    }
   };
   
   const totalIncome = transactions.filter(t => t.type === 'add').reduce((sum, t) => sum + t.amount, 0);
