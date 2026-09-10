@@ -149,6 +149,34 @@ function App() {
     localStorage.setItem('akwartsSavings', JSON.stringify(savingsData));
   }, [savingsData]);
 
+  // Global Debt State
+  const [debtData, setDebtData] = useState(() => {
+    const saved = localStorage.getItem('akwartsDebt');
+    return saved ? JSON.parse(saved) : { goal: 0, remaining: 0 };
+  });
+  const [debtModal, setDebtModal] = useState({ isOpen: false, mode: 'payment' }); 
+  const [debtInput, setDebtInput] = useState('');
+  const [debtError, setDebtError] = useState('');
+
+  // Save global debt and handle monthly rollover
+  useEffect(() => {
+    localStorage.setItem('akwartsDebt', JSON.stringify(debtData));
+  }, [debtData]);
+
+  useEffect(() => {
+    const savedMonth = localStorage.getItem('akwartsDebtMonth');
+    const currentRealMonth = new Date().toLocaleString('default', { month: 'short', year: '2-digit' });
+    
+    // If it's a new month, adjust the goal to reflect the remaining balance
+    if (savedMonth && savedMonth !== currentRealMonth) {
+      setDebtData(prev => ({ ...prev, goal: prev.remaining }));
+    }
+    
+    if (savedMonth !== currentRealMonth) {
+      localStorage.setItem('akwartsDebtMonth', currentRealMonth);
+    }
+  }, []);
+
   // Process Savings Deposits, Withdrawals, and Goals
   const handleSavingsSubmit = () => {
     const amount = parseFloat(savingsInput);
@@ -197,6 +225,57 @@ function App() {
     setSavingsError('');
     setSavingsModal({ isOpen: false, mode: '' });
     setSavingsInput('');
+    setSelectedIncomeId('');
+  };
+
+  // Process Debt Payments and Goals
+  const handleDebtSubmit = () => {
+    const amount = parseFloat(debtInput);
+    if (isNaN(amount) || amount <= 0) {
+      setDebtError('Enter a valid amount!');
+      setDebtInput('');
+      return;
+    }
+
+    if (debtModal.mode === 'goal') {
+      // Setting a new target debt updates both goal and remaining
+      setDebtData({ goal: amount, remaining: amount });
+    } else {
+      if (!selectedIncomeId) {
+        setDebtError('Select an income source!');
+        return;
+      }
+
+      const targetTxnIndex = transactions.findIndex(t => t.id.toString() === selectedIncomeId);
+      if (targetTxnIndex === -1) return;
+      
+      const targetTxn = transactions[targetTxnIndex];
+
+      if (amount > targetTxn.amount) {
+        setDebtError('Exceeds item balance!');
+        setDebtInput('');
+        return;
+      }
+      
+      if (amount > debtData.remaining) {
+        setDebtError('Exceeds remaining debt!');
+        setDebtInput('');
+        return;
+      }
+
+      const updatedTransactions = [...transactions];
+      
+      // Deduct payment from the income item
+      updatedTransactions[targetTxnIndex] = { ...targetTxn, amount: targetTxn.amount - amount };
+      
+      // Reduce the remaining debt
+      setDebtData({ ...debtData, remaining: debtData.remaining - amount });
+      setTransactions(updatedTransactions);
+    }
+    
+    setDebtError('');
+    setDebtModal({ isOpen: false, mode: '' });
+    setDebtInput('');
     setSelectedIncomeId('');
   };
 
@@ -253,8 +332,7 @@ function App() {
         setCategories([
           { id: 'c1', name: 'Income', type: 'add', expected: 0 },
           { id: 'c2', name: 'Bills', type: 'minus', expected: 0 },
-          { id: 'c3', name: 'Other Expenses', type: 'minus', expected: 0 },
-          { id: 'c4', name: 'Debt', type: 'minus', expected: 0 }
+          { id: 'c3', name: 'Other Expenses', type: 'minus', expected: 0 }
         ]);
       }
 
@@ -646,6 +724,55 @@ function App() {
     </div>
   );
 
+  // Generates the Debt Card with optional action buttons
+  const renderDebtCard = (showActions) => (
+    <div className="summary-card" style={{ marginBottom: '20px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+        <h3 style={{ color: 'var(--vivid-crimson)', margin: 0 }}>Debt</h3>
+        
+        {showActions && (
+          <button 
+            onClick={() => setDebtModal({ isOpen: true, mode: 'goal' })}
+            style={{ background: 'none', border: 'none', color: 'var(--vivid-crimson)', cursor: 'pointer' }}
+          >
+            <Edit2 size={18} />
+          </button>
+        )}
+      </div>
+      
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--vivid-crimson)' }}>
+          ₱{debtData.remaining.toFixed(2)}
+        </span>
+        <span style={{ fontSize: '1rem', color: '#888', fontWeight: 'bold' }}>
+          / ₱{debtData.goal.toFixed(2)}
+        </span>
+      </div>
+
+      {/* Progress Bar (Shrinks from Goal to 0) */}
+      <div style={{ width: '100%', height: '12px', backgroundColor: '#e5e5ea', borderRadius: '6px', margin: '15px 0', overflow: 'hidden' }}>
+        <div style={{ 
+          width: `${debtData.goal > 0 ? (debtData.remaining / debtData.goal) * 100 : 0}%`, 
+          height: '100%', 
+          backgroundColor: 'var(--vivid-crimson)', 
+          transition: 'width 0.3s ease' 
+        }}></div>
+      </div>
+      
+      {showActions && (
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button 
+            onClick={() => setDebtModal({ isOpen: true, mode: 'payment' })}
+            className="submit-button" 
+            style={{ backgroundColor: 'var(--vivid-crimson)', padding: '10px', fontSize: '0.9rem', flex: 1 }}
+          >
+            Payment
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
   const renderContent = () => {
     if (activeTab === 'main') {
       return (
@@ -671,6 +798,9 @@ function App() {
 
           {/* Render Savings Card WITHOUT buttons */}
           {renderSavingsCard(false)}
+
+          {/* Render Debt Card WITHOUT buttons */}
+          {renderDebtCard(false)}
 
           {renderExpenseChart()}
 
@@ -818,6 +948,9 @@ function App() {
 
           {/* Render Savings Card WITH buttons */}
           {renderSavingsCard(true)}
+
+          {/* Render Debt Card WITH buttons */}
+          {renderDebtCard(true)}
           
           <div className="form-card" style={{marginBottom: '20px'}}>
             {!showAddCategory ? (
@@ -994,6 +1127,46 @@ function App() {
             <div style={{display: 'flex', gap: '15px'}}>
               <button onClick={handleSavingsSubmit} className="submit-button" style={{backgroundColor: 'var(--vivid-cyan)', flex: 1}}>Confirm</button>
               <button onClick={() => { setSavingsModal({isOpen: false, mode: ''}); setSavingsInput(''); setSavingsError(''); setSelectedIncomeId(''); }} className="submit-button" style={{backgroundColor: '#e5e5ea', color: '#333', flex: 1}}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Debt Action Modal */}
+      {debtModal.isOpen && (
+        <div style={{position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 100}}>
+          <div style={{backgroundColor: 'var(--white)', padding: '25px', borderRadius: '15px', width: '85%', maxWidth: '320px', textAlign: 'center', boxShadow: '0 10px 25px rgba(0,0,0,0.2)'}}>
+            <h3 style={{color: 'var(--vivid-crimson)', marginBottom: '15px'}}>
+              {debtModal.mode === 'goal' ? 'Set Total Debt' : 'Make a Payment'}
+            </h3>
+            
+            {debtModal.mode === 'payment' && (
+              <select 
+                value={selectedIncomeId} 
+                onChange={(e) => { setSelectedIncomeId(e.target.value); setDebtError(''); }}
+                className="input-field"
+                style={{ marginBottom: '10px', ...(debtError === 'Select an income source!' ? { borderColor: 'var(--vivid-crimson)' } : {}) }}
+              >
+                <option value="" disabled>Select Income Item...</option>
+                {transactions.filter(t => t.type === 'add').map(t => (
+                  <option key={t.id} value={t.id}>{t.name} (₱{t.amount.toFixed(2)})</option>
+                ))}
+              </select>
+            )}
+
+            <input 
+              type="number" 
+              placeholder={debtError || "Amount (₱)"} 
+              value={debtInput}
+              onChange={(e) => { setDebtInput(e.target.value); setDebtError(''); }}
+              className={`input-field ${debtError && debtError !== 'Select an income source!' ? 'shake-error' : ''}`}
+              style={{ marginBottom: '15px', ...(debtError && debtError !== 'Select an income source!' ? { borderColor: 'var(--vivid-crimson)' } : {}) }}
+              autoFocus={debtModal.mode === 'goal'}
+            />
+
+            <div style={{display: 'flex', gap: '15px'}}>
+              <button onClick={handleDebtSubmit} className="submit-button" style={{backgroundColor: 'var(--vivid-crimson)', flex: 1}}>Confirm</button>
+              <button onClick={() => { setDebtModal({isOpen: false, mode: ''}); setDebtInput(''); setDebtError(''); setSelectedIncomeId(''); }} className="submit-button" style={{backgroundColor: '#e5e5ea', color: '#333', flex: 1}}>Cancel</button>
             </div>
           </div>
         </div>

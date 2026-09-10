@@ -444,9 +444,10 @@ body {
     align-items: start;
   }
 
-  /* Force the main summary, savings cards, and forms to span across both columns */
+  /* Force the main summary, savings, debt cards, and forms to span across both columns */
   .budget-dashboard > .summary-card:nth-child(1),
   .budget-dashboard > .summary-card:nth-child(2),
+  .budget-dashboard > .summary-card:nth-child(3),
   .form-card {
     grid-column: 1 / -1;
   }
