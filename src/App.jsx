@@ -119,7 +119,21 @@ function App() {
     }
   };
 
-  const executeFactoryReset = () => {
+  const executeFactoryReset = async () => {
+    // 1. Identify the user before we destroy their session
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (user) {
+      // 2. Wipe all their data from the cloud databases
+      await supabase.from('transactions').delete().eq('user_id', user.id);
+      await supabase.from('categories').delete().eq('user_id', user.id);
+      await supabase.from('debts').delete().eq('user_id', user.id);
+      
+      // Savings uses upsert/update rather than delete to maintain the single tracker row
+      await supabase.from('savings').update({ current_amount: 0, goal_amount: 0 }).eq('user_id', user.id);
+    }
+
+    // 3. Clear the sync queues, log the user out locally, and refresh
     localStorage.clear(); 
     window.location.reload(); 
   };
@@ -213,11 +227,16 @@ function App() {
       const newCurrent = savingsModal.mode === 'withdraw' ? savingsData.current - amount : (savingsModal.mode === 'deposit' ? savingsData.current + amount : savingsData.current);
       const newGoal = savingsModal.mode === 'goal' ? amount : savingsData.goal;
       
-      await supabase.from('savings').upsert({
+      const { error } = await supabase.from('savings').upsert({
         user_id: user.id,
         current_amount: newCurrent,
         goal_amount: newGoal
       });
+
+      if (error) {
+        // Savings is a single global record, so we just overwrite the queue with the latest state
+        localStorage.setItem('akwartsSavingsQueue', JSON.stringify({ current_amount: newCurrent, goal_amount: newGoal }));
+      }
     }
     
     setSavingsError('');
@@ -311,7 +330,12 @@ function App() {
       
       // Push to Cloud
       if (user) {
-        await supabase.from('debts').insert([newDebt]);
+        const { error } = await supabase.from('debts').insert([newDebt]);
+        if (error) {
+          const queue = JSON.parse(localStorage.getItem('akwartsDebtInsertQueue') || '[]');
+          queue.push(newDebt);
+          localStorage.setItem('akwartsDebtInsertQueue', JSON.stringify(queue));
+        }
       }
       
     } else if (debtModal.mode === 'payment') {
@@ -339,10 +363,16 @@ function App() {
 
       // 3. Push updated Debt balance to the Cloud
       if (user) {
-        await supabase
+        const { error } = await supabase
           .from('debts')
           .update({ remaining: newRemaining })
           .eq('id', selectedDebtId);
+
+        if (error) {
+          const queue = JSON.parse(localStorage.getItem('akwartsDebtUpdateQueue') || '[]');
+          queue.push({ id: selectedDebtId, remaining: newRemaining });
+          localStorage.setItem('akwartsDebtUpdateQueue', JSON.stringify(queue));
+        }
       }
     }
     
@@ -606,6 +636,34 @@ function App() {
         } else {
           console.error("Category insert sync failed:", catInsErr);
         }
+      }
+
+      // 5. Process Pending Savings
+      const pendingSavings = localStorage.getItem('akwartsSavingsQueue');
+      if (pendingSavings) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { error: savErr } = await supabase.from('savings').upsert({
+            user_id: user.id, ...JSON.parse(pendingSavings)
+          });
+          if (!savErr) localStorage.removeItem('akwartsSavingsQueue');
+        }
+      }
+
+      // 6. Process Pending Debt Inserts
+      const debtInsertQueue = JSON.parse(localStorage.getItem('akwartsDebtInsertQueue') || '[]');
+      if (debtInsertQueue.length > 0) {
+        const { error: debtInsErr } = await supabase.from('debts').insert(debtInsertQueue);
+        if (!debtInsErr) localStorage.removeItem('akwartsDebtInsertQueue');
+      }
+
+      // 7. Process Pending Debt Updates
+      const debtUpdateQueue = JSON.parse(localStorage.getItem('akwartsDebtUpdateQueue') || '[]');
+      if (debtUpdateQueue.length > 0) {
+        for (const debt of debtUpdateQueue) {
+          await supabase.from('debts').update({ remaining: debt.remaining }).eq('id', debt.id);
+        }
+        localStorage.removeItem('akwartsDebtUpdateQueue');
       }
     };
 
