@@ -222,19 +222,21 @@ function App() {
     }
 
     // Push updated savings to Supabase
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
+    
     if (user) {
       const newCurrent = savingsModal.mode === 'withdraw' ? savingsData.current - amount : (savingsModal.mode === 'deposit' ? savingsData.current + amount : savingsData.current);
       const newGoal = savingsModal.mode === 'goal' ? amount : savingsData.goal;
       
-      const { error } = await supabase.from('savings').upsert({
-        user_id: user.id,
-        current_amount: newCurrent,
-        goal_amount: newGoal
-      });
-
-      if (error) {
-        // Savings is a single global record, so we just overwrite the queue with the latest state
+      try {
+        const { error } = await supabase.from('savings').upsert({
+          user_id: user.id,
+          current_amount: newCurrent,
+          goal_amount: newGoal
+        });
+        if (error) throw error;
+      } catch (err) {
         localStorage.setItem('akwartsSavingsQueue', JSON.stringify({ current_amount: newCurrent, goal_amount: newGoal }));
       }
     }
@@ -307,8 +309,8 @@ function App() {
       return;
     }
 
-    // Securely identify the logged-in user for the cloud
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
 
     if (debtModal.mode === 'add') {
       if (!debtInput.name.trim()) {
@@ -325,13 +327,13 @@ function App() {
         remaining: amount 
       };
       
-      // Optimistic UI Update: Instantly show on screen
       setDebts([...debts, newDebt]);
       
-      // Push to Cloud
       if (user) {
-        const { error } = await supabase.from('debts').insert([newDebt]);
-        if (error) {
+        try {
+          const { error } = await supabase.from('debts').insert([newDebt]);
+          if (error) throw error;
+        } catch (err) {
           const queue = JSON.parse(localStorage.getItem('akwartsDebtInsertQueue') || '[]');
           queue.push(newDebt);
           localStorage.setItem('akwartsDebtInsertQueue', JSON.stringify(queue));
@@ -350,25 +352,23 @@ function App() {
       if (amount > targetTxn.amount) { setDebtError('Exceeds item balance!'); return; }
       if (amount > debts[debtIndex].remaining) { setDebtError('Exceeds remaining debt!'); return; }
 
-      // 1. Deduct payment from the income item (Transactions)
       const updatedTxns = [...transactions];
       updatedTxns[targetTxnIndex] = { ...targetTxn, amount: targetTxn.amount - amount };
       setTransactions(updatedTxns);
       
-      // 2. Reduce the specific debt (Debts)
       const newRemaining = debts[debtIndex].remaining - amount;
       const updatedDebts = [...debts];
       updatedDebts[debtIndex] = { ...updatedDebts[debtIndex], remaining: newRemaining };
       setDebts(updatedDebts);
 
-      // 3. Push updated Debt balance to the Cloud
       if (user) {
-        const { error } = await supabase
-          .from('debts')
-          .update({ remaining: newRemaining })
-          .eq('id', selectedDebtId);
-
-        if (error) {
+        try {
+          const { error } = await supabase
+            .from('debts')
+            .update({ remaining: newRemaining })
+            .eq('id', selectedDebtId);
+          if (error) throw error;
+        } catch (err) {
           const queue = JSON.parse(localStorage.getItem('akwartsDebtUpdateQueue') || '[]');
           queue.push({ id: selectedDebtId, remaining: newRemaining });
           localStorage.setItem('akwartsDebtUpdateQueue', JSON.stringify(queue));
@@ -376,7 +376,6 @@ function App() {
       }
     }
     
-    // Clear modals and inputs
     setDebtError('');
     setDebtModal({ isOpen: false, mode: '' });
     setDebtInput({ name: '', amount: '' });
@@ -527,11 +526,12 @@ function App() {
 
     setFormErrors({ category: '', name: '', amount: '' });
     
-    // 1. Get the current secure user
-    const { data: { user } } = await supabase.auth.getUser();
+    // 1. Grab user securely from LOCAL memory instead of the cloud
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
     if (!user) return;
 
-    const newId = Date.now().toString(); // Supabase uses TEXT for IDs
+    const newId = Date.now().toString(); 
 
     // 2. Format for React (Keeps the UI instant)
     const uiTransaction = {
@@ -562,11 +562,11 @@ function App() {
     setSelectedCategory('');
     setIsRecurring(false);
 
-    // Push to cloud in the background, or queue it if offline
-    const { error } = await supabase.from('transactions').insert([dbTransaction]);
-    
-    if (error) {
-      // Catch the network error and stash the item locally
+    // Push to cloud in the background, or queue it securely if offline
+    try {
+      const { error } = await supabase.from('transactions').insert([dbTransaction]);
+      if (error) throw error; // Force it to the catch block if Supabase returns an error
+    } catch (err) {
       const currentQueue = JSON.parse(localStorage.getItem('akwartsSyncQueue') || '[]');
       currentQueue.push(dbTransaction);
       localStorage.setItem('akwartsSyncQueue', JSON.stringify(currentQueue));
@@ -716,7 +716,8 @@ function App() {
   const handleAddCategory = async (name, type) => {
     if (!name.trim()) return;
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
     if (!user) return;
 
     const newId = Date.now().toString();
@@ -726,11 +727,11 @@ function App() {
     // Optimistic UI Update
     setCategories([...categories, uiCategory]);
 
-    // Attempt to push to the cloud
-    const { error } = await supabase.from('categories').insert([dbCategory]);
-
-    if (error) {
-      // Catch offline error and queue the insertion
+    // Push to cloud or queue offline
+    try {
+      const { error } = await supabase.from('categories').insert([dbCategory]);
+      if (error) throw error;
+    } catch (err) {
       const queue = JSON.parse(localStorage.getItem('akwartsCatInsertQueue') || '[]');
       queue.push(dbCategory);
       localStorage.setItem('akwartsCatInsertQueue', JSON.stringify(queue));
